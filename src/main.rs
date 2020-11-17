@@ -20,7 +20,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     tracing_subscriber::fmt::init();
 
     let token = env::var("DISCORD_TOKEN")?;
-    let redis_pool = ConnectionPool::create("127.0.0.1:6379".into(), None, num_cpus::get()).await?;
+    let redis_addr = env::var("REDIS_HOST")?;
+    let redis_pool = ConnectionPool::create(redis_addr, None, num_cpus::get()).await?;
 
     let context = Context { redis_pool };
 

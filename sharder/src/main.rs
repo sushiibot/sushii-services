@@ -1,13 +1,14 @@
 use darkredis::ConnectionPool;
+use std::convert::TryFrom;
 use std::{env, error::Error};
-use tokio::stream::StreamExt;
 use tokio::signal::unix::{signal, SignalKind};
+use tokio::stream::StreamExt;
 use tracing_subscriber;
 use twilight_gateway::{
-    EventTypeFlags,
     cluster::{Cluster, ShardScheme},
-    Event,
+    Event, EventTypeFlags,
 };
+use twilight_model::gateway::event::DispatchEvent;
 use twilight_model::gateway::Intents;
 
 #[derive(Clone, Debug)]
@@ -60,7 +61,16 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     }
 
     // Filter only select events
-    let types = EventTypeFlags::MESSAGE_CREATE;
+    let types = EventTypeFlags::READY
+        | EventTypeFlags::RESUMED
+        | EventTypeFlags::MESSAGE_CREATE
+        | EventTypeFlags::MESSAGE_DELETE
+        | EventTypeFlags::MESSAGE_UPDATE
+        | EventTypeFlags::GUILD_CREATE
+        | EventTypeFlags::GUILD_DELETE
+        | EventTypeFlags::MEMBER_ADD
+        | EventTypeFlags::MEMBER_REMOVE;
+
     let mut events = cluster.some_events(types);
 
     while let Some((shard_id, event)) = events.next().await {
@@ -75,21 +85,44 @@ async fn handle_event(
     event: Event,
     ctx: Context,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    match event {
+    match &event {
         Event::MessageCreate(msg) => {
-            tracing::info!("Received message: {}", msg.0.content);
-            let event_str = serde_json::to_string(&msg)?;
-
-            let mut conn = ctx.redis_pool.get().await;
-            conn.rpush("events", event_str).await?;
-            conn.ltrim("events", 0, 99).await?;
+            tracing::info!(
+                "Received message: {}#{}: {}",
+                msg.0.author.name,
+                msg.0.author.discriminator,
+                msg.0.content
+            );
         }
-        Event::ShardConnected(_) => {
-            tracing::info!("Connected on shard {}", shard_id);
+        Event::Ready(ready) => {
+            tracing::info!(
+                "Shard {}, user {} ready. {} guilds connected",
+                shard_id,
+                format!("{}#{}", ready.user.name, ready.user.discriminator),
+                ready.guilds.len()
+            );
+        }
+        Event::Resumed => {
+            tracing::info!("Resuming shard {}", shard_id);
         }
         _ => {}
     }
 
+    if let Ok(e) = DispatchEvent::try_from(event) {
+        let mut conn = ctx.redis_pool.get().await;
+
+        // DispatchEvents are okay to unwrap, only Gateway and Shard events don't have a name
+        let event_name = e.kind().name().unwrap();
+        let event_str = serde_json::to_string(&e)?;
+
+        let event_name_str = &[event_name, &event_str].join(",");
+
+        tracing::info!("Event: {}", event_name_str);
+
+        conn.rpush("events", event_name_str).await?;
+        // Can't do negative since it takes usize
+        // conn.ltrim("events", -10, -1).await?;
+    }
 
     Ok(())
 }

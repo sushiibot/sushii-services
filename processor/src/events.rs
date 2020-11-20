@@ -33,6 +33,7 @@ pub fn get_events(redis_addr: String) -> impl Stream<Item = Result<(u64, Dispatc
                     break;
                 }
 
+                // Use a custom struct in a common models crate instead of all this 
                 let (shard_id, event_name, event_json_str) = match parse_event_str(&event_str) {
                     Some(data) => data,
                     None => {

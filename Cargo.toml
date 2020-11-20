@@ -2,5 +2,6 @@
 members = [
     "sharder",
     "processor",
-    "example"
+    "example",
+    "sushii-model",
 ]

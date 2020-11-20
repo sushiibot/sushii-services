@@ -1,0 +1,12 @@
+[package]
+name = "sushii-model"
+version = "0.1.0"
+authors = ["drklee3 <derrick@dlee.dev>"]
+edition = "2018"
+
+[dependencies]
+twilight-model = "0.2"
+serde = "1.0"
+
+[dev-dependencies]
+serde_json = "1.0.59"

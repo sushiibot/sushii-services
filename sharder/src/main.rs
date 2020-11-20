@@ -115,7 +115,7 @@ async fn handle_event(
         let event_name = e.kind().name().unwrap();
         let event_str = serde_json::to_string(&e)?;
 
-        let event_name_str = &[event_name, &event_str].join(",");
+        let event_name_str = &[&shard_id.to_string(), event_name, &event_str].join(",");
 
         tracing::info!("Event: {}", event_name_str);
 

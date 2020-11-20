@@ -8,7 +8,20 @@ use twilight_model::gateway::event::DispatchEventWithTypeDeserializer;
 
 use crate::error::Result;
 
-pub fn get_events(redis_addr: String) -> impl Stream<Item = Result<DispatchEvent>> {
+fn parse_event_str<'a>(s: &'a str) -> Option<(u64, &'a str, &'a str)> {
+    let split_pos_1 = s.find(',')?;
+    let shard_id = s[..split_pos_1].parse::<u64>().ok()?;
+
+    // Find split pos for second half
+    let split_pos_2 = s[split_pos_1 + 1..].find(',')?;
+
+    let event_name = &s[split_pos_1 + 1..split_pos_2];
+    let event_json_str = &s[split_pos_2 + 1..];
+
+    Some((shard_id, event_name, event_json_str))
+}
+
+pub fn get_events(redis_addr: String) -> impl Stream<Item = Result<(u64, DispatchEvent)>> {
     try_stream! {
         let mut conn = Connection::connect(redis_addr).await?;
 
@@ -20,16 +33,13 @@ pub fn get_events(redis_addr: String) -> impl Stream<Item = Result<DispatchEvent
                     break;
                 }
 
-                let split_pos = match event_str.find(',') {
-                    Some(pos) => pos,
+                let (shard_id, event_name, event_json_str) = match parse_event_str(&event_str) {
+                    Some(data) => data,
                     None => {
-                        tracing::warn!("Event has no , to split: {}", event_str);
+                        tracing::warn!("Failed to parse event string: {}", event_str);
                         continue;
                     }
                 };
-
-                let event_name = &event_str[..split_pos];
-                let event_json_str = &event_str[split_pos + 1..];
 
                 tracing::info!("Event json string: {}", event_json_str);
 
@@ -41,7 +51,7 @@ pub fn get_events(redis_addr: String) -> impl Stream<Item = Result<DispatchEvent
 
                 tracing::info!("blpop: {}", event_name);
 
-                yield event;
+                yield (shard_id, event);
             }
         }
     }

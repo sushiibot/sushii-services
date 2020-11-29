@@ -1,5 +1,4 @@
 use darkredis::ConnectionPool;
-use std::convert::TryFrom;
 use std::{env, error::Error};
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::stream::StreamExt;
@@ -8,7 +7,6 @@ use twilight_gateway::{
     cluster::{Cluster, ShardScheme},
     Event, EventTypeFlags,
 };
-use twilight_model::gateway::event::DispatchEvent;
 use twilight_model::gateway::Intents;
 
 #[derive(Clone, Debug)]
@@ -61,15 +59,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     }
 
     // Filter only select events
-    let types = EventTypeFlags::READY
-        | EventTypeFlags::RESUMED
-        | EventTypeFlags::MESSAGE_CREATE
-        | EventTypeFlags::MESSAGE_DELETE
-        | EventTypeFlags::MESSAGE_UPDATE
-        | EventTypeFlags::GUILD_CREATE
-        | EventTypeFlags::GUILD_DELETE
-        | EventTypeFlags::MEMBER_ADD
-        | EventTypeFlags::MEMBER_REMOVE;
+    let types = EventTypeFlags::READY | EventTypeFlags::RESUMED | EventTypeFlags::SHARD_PAYLOAD;
 
     let mut events = cluster.some_events(types);
 
@@ -105,26 +95,11 @@ async fn handle_event(
         Event::Resumed => {
             tracing::info!("Resuming shard {}", shard_id);
         }
+        Event::ShardPayload(payload) => {
+            let mut conn = ctx.redis_pool.get().await;
+            conn.rpush("events", &payload.bytes).await?;
+        }
         _ => {}
-    }
-
-    if let Ok(e) = DispatchEvent::try_from(event) {
-        let mut conn = ctx.redis_pool.get().await;
-
-        // DispatchEvents are okay to unwrap, only Gateway and Shard events don't have a name
-        /*
-        let event_str = serde_json::to_string(&e)?;
-
-        let event_name_str = &[&shard_id.to_string(), event_name, &event_str].join(",");
-        */
-        let event_name = e.kind();
-        let event_str = serde_json::to_string(&sushii_model::Event::new(shard_id, event_name, e))?;
-
-        tracing::info!("Event: {:?}", event_str);
-
-        conn.rpush("events", event_str).await?;
-        // Can't do negative since it takes usize
-        // conn.ltrim("events", -10, -1).await?;
     }
 
     Ok(())

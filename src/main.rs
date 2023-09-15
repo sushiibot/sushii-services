@@ -1,6 +1,7 @@
 use darkredis::ConnectionPool;
 use std::{env, error::Error};
 use tokio::stream::StreamExt;
+use tokio::signal::unix::{signal, SignalKind};
 use tracing_subscriber;
 use twilight_gateway::{
     EventTypeFlags,
@@ -38,6 +39,26 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         cluster_spawn.up().await;
     });
 
+    let signal_kinds = vec![
+        SignalKind::hangup(),
+        SignalKind::interrupt(),
+        SignalKind::terminate(),
+    ];
+
+    // Listen for shutdown signals
+    for signal_kind in signal_kinds {
+        let mut stream = signal(signal_kind).unwrap();
+        let cluster = cluster.clone();
+
+        tokio::spawn(async move {
+            stream.recv().await;
+            tracing::info!("Signal received, shutting down...");
+            cluster.down();
+
+            tracing::info!("bye");
+        });
+    }
+
     // Filter only select events
     let types = EventTypeFlags::MESSAGE_CREATE;
     let mut events = cluster.some_events(types);
@@ -56,7 +77,7 @@ async fn handle_event(
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     match event {
         Event::MessageCreate(msg) => {
-            tracing::info!("Recieved message: {}", msg.0.content);
+            tracing::info!("Received message: {}", msg.0.content);
             let event_str = serde_json::to_string(&msg)?;
 
             let mut conn = ctx.redis_pool.get().await;

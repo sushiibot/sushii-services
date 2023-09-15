@@ -25,6 +25,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf8dcb5b4bbaa28653b647d8c77bd4ed40183b48882e130c1f1ffb73de069fd7"
+
+[[package]]
 name = "async-stream"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -228,11 +234,13 @@ dependencies = [
 name = "example_printer"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "futures-util",
  "sushii-processor",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "twilight-http",
 ]
 
 [[package]]
@@ -1506,9 +1514,9 @@ dependencies = [
 
 [[package]]
 name = "twilight-http"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55347da5b5820db2407a50b06f80e514f80c7eef2b91be5a2b6da433bb3a875b"
+checksum = "21046840ce9f3100861d5d0ac6f0a9b8a43de766b60bd46bd60204c0ddf83b28"
 dependencies = [
  "bytes",
  "futures-channel",

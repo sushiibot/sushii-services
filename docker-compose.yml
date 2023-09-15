@@ -1,0 +1,32 @@
+version: "3.8"
+services:
+    redis:
+        image: redis:6.0
+        container_name: redis
+        restart: unless-stopped
+        expose:
+            - "6379"
+        networks:
+            - sharder_net
+    sharder:
+        image: ghcr.io/sushiibot/sushii-sharder:latest
+        container_name: sharder
+        restart: unless-stopped
+        depends_on:
+            - redis
+        expose:
+            - "9888"
+        logging:
+            driver: json-file
+            options:
+                max-size: "10m"
+                max-file: "3"
+                mode: non-blocking
+                max-buffer-size: 4m
+        env_file:
+            - .env
+        networks:
+            - sharder_net
+networks:
+    sharder_net:
+        external: false

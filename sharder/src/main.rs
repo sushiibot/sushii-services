@@ -112,14 +112,17 @@ async fn handle_event(
         let mut conn = ctx.redis_pool.get().await;
 
         // DispatchEvents are okay to unwrap, only Gateway and Shard events don't have a name
-        let event_name = e.kind().name().unwrap();
+        /*
         let event_str = serde_json::to_string(&e)?;
 
         let event_name_str = &[&shard_id.to_string(), event_name, &event_str].join(",");
+        */
+        let event_name = e.kind();
+        let event_str = serde_json::to_string(&sushii_model::Event::new(shard_id, event_name, e))?;
 
-        tracing::info!("Event: {}", event_name_str);
+        tracing::info!("Event: {:?}", event_str);
 
-        conn.rpush("events", event_name_str).await?;
+        conn.rpush("events", event_str).await?;
         // Can't do negative since it takes usize
         // conn.ltrim("events", -10, -1).await?;
     }

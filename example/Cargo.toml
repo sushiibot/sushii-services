@@ -1,0 +1,12 @@
+[package]
+name = "example_printer"
+version = "0.1.0"
+authors = ["Derrick Lee <derrick@dlee.dev>"]
+edition = "2018"
+
+[dependencies]
+sushii-processor = { path = "../processor" }
+tokio = { version = "0.2", features = ["macros"] }
+tracing = "0.1.21"
+tracing-subscriber = "0.2.15"
+futures-util = "0.3.8"

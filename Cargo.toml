@@ -1,6 +1,6 @@
 [workspace]
-
 members = [
     "sharder",
-    "processor"
+    "processor",
+    "example"
 ]

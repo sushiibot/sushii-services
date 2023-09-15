@@ -3,23 +3,11 @@ use darkredis::Connection;
 use serde::de::DeserializeSeed;
 use serde_json::Deserializer;
 use tokio::stream::Stream;
+use twilight_model::gateway::event::gateway::GatewayEvent;
 use twilight_model::gateway::event::DispatchEvent;
-use twilight_model::gateway::event::DispatchEventWithTypeDeserializer;
+use twilight_model::gateway::event::gateway::GatewayEventDeserializer;
 
 use crate::error::Result;
-
-fn parse_event_str<'a>(s: &'a str) -> Option<(u64, &'a str, &'a str)> {
-    let split_pos_1 = s.find(',')?;
-    let shard_id = s[..split_pos_1].parse::<u64>().ok()?;
-
-    // Find split pos for second half
-    let split_pos_2 = s[split_pos_1 + 1..].find(',')?;
-
-    let event_name = &s[split_pos_1 + 1..split_pos_2];
-    let event_json_str = &s[split_pos_2 + 1..];
-
-    Some((shard_id, event_name, event_json_str))
-}
 
 pub fn get_events(redis_addr: String) -> impl Stream<Item = Result<(u64, DispatchEvent)>> {
     try_stream! {
@@ -28,31 +16,34 @@ pub fn get_events(redis_addr: String) -> impl Stream<Item = Result<(u64, Dispatc
         loop {
             if let Some((_list, event)) = conn.blpop(&["events"], 0).await? {
                 let event_str = String::from_utf8_lossy(&event);
+                tracing::info!("Event json string: {}", event_str);
 
-                if event_str == "event" {
-                    break;
-                }
-
-                // Use a custom struct in a common models crate instead of all this 
-                let (shard_id, event_name, event_json_str) = match parse_event_str(&event_str) {
-                    Some(data) => data,
+                let de = match GatewayEventDeserializer::from_json(&event_str) {
+                    Some(d) => d,
                     None => {
-                        tracing::warn!("Failed to parse event string: {}", event_str);
+                        tracing::warn!("Failed to create create gateway event deserializer: {}", event_str);
                         continue;
                     }
                 };
 
-                tracing::info!("Event json string: {}", event_json_str);
+                let mut json_deserializer = Deserializer::from_str(&event_str);
+                let gateway_event = de.deserialize(&mut json_deserializer)?;
 
-                // Create deserializer with the event name
-                let de = DispatchEventWithTypeDeserializer::new(event_name);
+                let (shard_id, dispatch_event) = match gateway_event {
+                    GatewayEvent::Dispatch(shard_id, dispatch_event) => {
+                        tracing::info!("blpop: {:?}", dispatch_event.kind());
 
-                let mut json_deserializer = Deserializer::from_str(event_json_str);
-                let event = de.deserialize(&mut json_deserializer)?;
+                        (shard_id, dispatch_event)
+                    }
+                    // Heartbeat(u64), HeartbeatAck, Hello(u64), InvalidateSession(bool), Reconnect,
+                    _ => {
+                        continue;
+                    }
+                };
 
-                tracing::info!("blpop: {}", event_name);
-
-                yield (shard_id, event);
+                // Not sure if I should return a Box<DispatchEvent> or move it
+                // back to the stack like this
+                yield (shard_id, *dispatch_event);
             }
         }
     }
